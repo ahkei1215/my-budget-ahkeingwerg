@@ -35,33 +35,36 @@
 // 1. 🚀 填入妳的 Google Script URL
 const API_URL = 'https://script.google.com/macros/s/AKfycbxauaxw2Q8k-0E77ZXj2fzGlDdJPJNsXBionq2G71yyEW_3SspWYs7TVhzC89riQhps/exec'; 
 
-// 2. 初始金額設定 (跟足妳張 Excel)
 const initialBudgets = {
     "午餐": 2640, "晚餐": 3120, "零用": 6690, "交通/養車": 4100,
     "租金/車位": 14400, "電話分期": 450, "水電煤": 1500,
     "保險": 3400, "旅遊": 4000, "買樓儲蓄": 12000
 };
 
-let currentBudgets = {...initialBudgets};
-let historyData = {};
+// 先讀取本地緩存，確保網頁唔會空白
+let currentBudgets = JSON.parse(localStorage.getItem('march_Budgets')) || {...initialBudgets};
+let historyData = JSON.parse(localStorage.getItem('march_History')) || {};
 
-// 3. 核心功能：從 Google Sheets 攞返所有紀錄嚟同步
+// 2. 核心同步功能 (加強穩健性)
 async function syncFromCloud() {
     const status = document.getElementById('sync-status');
     status.style.display = 'block';
-    status.innerText = '☁️ 正在同步雲端數據...';
+    status.innerText = '☁️ 正在連線雲端數據...';
+
+    // 設定 5 秒超時保險
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
     try {
-        // 向 Google Sheet 攞數 (執行 doGet)
-        const response = await fetch(API_URL);
+        const response = await fetch(API_URL, { signal: controller.signal });
         const rows = await response.json(); 
+        clearTimeout(timeoutId);
 
-        // 重新根據 Sheet 紀錄計一次餘額 (Single Source of Truth)
         let newBudgets = {...initialBudgets};
         let newHistory = {};
 
-        // 由第 2 行開始讀 (第 1 行係 Header)
         for (let i = 1; i < rows.length; i++) {
+            if(!rows[i][1]) continue; 
             let time = new Date(rows[i][0]).toLocaleString('zh-HK', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'});
             let cat = rows[i][1];
             let amt = parseFloat(rows[i][2]);
@@ -76,22 +79,19 @@ async function syncFromCloud() {
 
         currentBudgets = newBudgets;
         historyData = newHistory;
-        render();
-        status.innerText = '✅ 雲端同步完成';
+        status.innerText = '✅ 雲端同步成功';
         setTimeout(() => status.style.display = 'none', 2000);
-
     } catch (e) {
-        console.error(e);
-        status.innerText = '❌ 同步失敗，正使用本地快照';
-        // 如果斷網，就用返 LocalStorage 頂住先
-        currentBudgets = JSON.parse(localStorage.getItem('march_Budgets')) || {...initialBudgets};
-        historyData = JSON.parse(localStorage.getItem('march_History')) || {};
-        render();
+        console.error("同步出錯:", e);
+        status.innerText = '⚠️ 雲端連線失敗，正使用本地紀錄';
+        setTimeout(() => status.style.display = 'none', 3000);
     }
+    render(); // 無論成功定失敗，最後一定要 Render 畫面！
 }
 
 function render() {
     const container = document.getElementById('budget-container');
+    if (!container) return;
     container.innerHTML = '';
     let total = 0;
     
@@ -101,7 +101,6 @@ function render() {
         const div = document.createElement('div');
         div.className = 'card';
         
-        // 顯示最近 2 條紀錄
         let histHTML = logs.slice(-2).reverse().map(l => 
             `<div style="display:flex;justify-content:space-between;font-size:11px;color:#888;margin-top:4px;">
                 <span>${l.time} ${l.rem}</span><span>-$${l.amt}</span>
@@ -120,7 +119,6 @@ function render() {
     }
     document.getElementById('total-left').innerText = `剩餘總額: $${total.toLocaleString()}`;
     
-    // 儲存一份快照落手機，以防斷網
     localStorage.setItem('march_Budgets', JSON.stringify(currentBudgets));
     localStorage.setItem('march_History', JSON.stringify(historyData));
 }
@@ -134,9 +132,8 @@ async function deduct(cat) {
     if (!isNaN(amt) && amt > 0) {
         const status = document.getElementById('sync-status');
         status.style.display = 'block';
-        status.innerText = '📤 正在上傳數據...';
+        status.innerText = '📤 正在上傳...';
 
-        // 先更新畫面 (Optimistic UI)
         currentBudgets[cat] -= amt;
         const now = new Date().toLocaleString('zh-HK', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'});
         if (!historyData[cat]) historyData[cat] = [];
@@ -144,16 +141,15 @@ async function deduct(cat) {
         render();
 
         try {
-            // 傳去 Google Sheet
             await fetch(API_URL, {
                 method: 'POST',
                 mode: 'no-cors',
                 body: JSON.stringify({ cat, amt, rem })
             });
-            status.innerText = '✅ 已同步至雲端';
+            status.innerText = '✅ 已存至雲端';
             setTimeout(() => status.style.display = 'none', 2000);
         } catch (e) {
-            status.innerText = '❌ 上傳失敗，請稍後重試';
+            status.innerText = '❌ 上傳失敗 (已存於本地)';
         }
 
         amtInput.value = '';
@@ -161,12 +157,14 @@ async function deduct(cat) {
     }
 }
 
-// 啟動：一開網頁即同步
+// 先畫出本地數，再試同步
+render(); 
 syncFromCloud();
 
 </script>
 </body>
 </html>
+
 
 
 
