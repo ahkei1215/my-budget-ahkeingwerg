@@ -145,7 +145,7 @@ async function deduct(cat) {
 
         try {
             // 傳去 Google Sheet
-            await fetch(https://script.google.com/macros/s/AKfycbxauaxw2Q8k-0E77ZXj2fzGlDdJPJNsXBionq2G71yyEW_3SspWYs7TVhzC89riQhps/exec, {
+            await fetch(API_URL, {
                 method: 'POST',
                 mode: 'no-cors',
                 body: JSON.stringify({ cat, amt, rem })
@@ -167,4 +167,5 @@ syncFromCloud();
 </script>
 </body>
 </html>
+
 
