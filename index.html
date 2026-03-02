@@ -3,36 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3月預算同步版</title>
+    <title>3月預算雲端同步版</title>
     <style>
         :root { --primary: #3498db; --danger: #e74c3c; --dark: #2c3e50; }
         body { font-family: sans-serif; background: #f0f2f5; padding: 15px; margin: 0; padding-bottom: 50px; }
-        .header { background: var(--dark); color: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; text-align: center; }
+        .header { background: var(--dark); color: white; padding: 15px; border-radius: 12px; margin-bottom: 10px; text-align: center; }
         .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
         .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         .card h3 { margin: 0; font-size: 16px; color: #34495e; }
         .balance { font-size: 20px; font-weight: bold; color: var(--dark); }
         .input-row { display: flex; gap: 8px; margin-bottom: 8px; }
-        input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; }
-        .btn-add { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 8px; width: 100%; font-weight: bold; }
+        input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; width: 40%; }
+        button { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; width: 100%; font-weight: bold; cursor: pointer; }
+        #sync-status { display: none; text-align: center; color: #f39c12; margin-bottom: 10px; font-weight: bold; font-size: 14px; background: #fff; padding: 5px; border-radius: 8px; }
         .history { margin-top: 10px; font-size: 12px; border-top: 1px solid #eee; padding-top: 5px; }
-        .history-row { display: flex; justify-content: space-between; padding: 3px 0; color: #666; }
-        .btn-del { color: #ccc; border: none; background: none; margin-left: 5px; cursor: pointer; }
     </style>
 </head>
 <body>
 
 <div class="header">
     <h2 style="margin:0">3月預算儀表板 (雲端同步)</h2>
-    <p id="total-left" style="font-size:14px; margin-top:5px; opacity:0.9">剩餘總額: $52,300</p>
+    <p id="total-left" style="font-size:14px; margin-top:5px; opacity:0.9">載入中...</p>
 </div>
 
-<div id="loading" style="display:none; text-align:center; color:orange; margin-bottom:10px;">☁️ 同步中...</div>
+<div id="sync-status">☁️ 準備連線...</div>
+
 <div class="grid" id="budget-container"></div>
 
 <script>
-// 1. 🚀 填入妳的 Google Script URL
 const API_URL = 'https://script.google.com/macros/s/AKfycbxauaxw2Q8k-0E77ZXj2fzGlDdJPJNsXBionq2G71yyEW_3SspWYs7TVhzC89riQhps/exec'; 
 
 const initialBudgets = {
@@ -41,19 +40,16 @@ const initialBudgets = {
     "保險": 3400, "旅遊": 4000, "買樓儲蓄": 12000
 };
 
-// 先讀取本地緩存，確保網頁唔會空白
 let currentBudgets = JSON.parse(localStorage.getItem('march_Budgets')) || {...initialBudgets};
 let historyData = JSON.parse(localStorage.getItem('march_History')) || {};
 
-// 2. 核心同步功能 (加強穩健性)
 async function syncFromCloud() {
     const status = document.getElementById('sync-status');
     status.style.display = 'block';
     status.innerText = '☁️ 正在連線雲端數據...';
 
-    // 設定 5 秒超時保險
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 寬限到 8 秒
 
     try {
         const response = await fetch(API_URL, { signal: controller.signal });
@@ -65,7 +61,8 @@ async function syncFromCloud() {
 
         for (let i = 1; i < rows.length; i++) {
             if(!rows[i][1]) continue; 
-            let time = new Date(rows[i][0]).toLocaleString('zh-HK', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'});
+            let dateObj = new Date(rows[i][0]);
+            let time = (dateObj.getMonth()+1) + '/' + dateObj.getDate() + ' ' + dateObj.getHours() + ':' + dateObj.getMinutes().toString().padStart(2, '0');
             let cat = rows[i][1];
             let amt = parseFloat(rows[i][2]);
             let rem = rows[i][3] || "無備註";
@@ -80,13 +77,12 @@ async function syncFromCloud() {
         currentBudgets = newBudgets;
         historyData = newHistory;
         status.innerText = '✅ 雲端同步成功';
-        setTimeout(() => status.style.display = 'none', 2000);
+        setTimeout(() => { status.style.display = 'none'; }, 2000);
     } catch (e) {
-        console.error("同步出錯:", e);
-        status.innerText = '⚠️ 雲端連線失敗，正使用本地紀錄';
-        setTimeout(() => status.style.display = 'none', 3000);
+        console.error("同步失敗:", e);
+        status.innerText = '⚠️ 連線失敗，正使用本地紀錄';
     }
-    render(); // 無論成功定失敗，最後一定要 Render 畫面！
+    render();
 }
 
 function render() {
@@ -135,9 +131,11 @@ async function deduct(cat) {
         status.innerText = '📤 正在上傳...';
 
         currentBudgets[cat] -= amt;
-        const now = new Date().toLocaleString('zh-HK', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'});
+        let d = new Date();
+        let time = (d.getMonth()+1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + d.getMinutes().toString().padStart(2, '0');
+        
         if (!historyData[cat]) historyData[cat] = [];
-        historyData[cat].push({ amt, rem, time: now });
+        historyData[cat].push({ amt, rem, time: time });
         render();
 
         try {
@@ -147,7 +145,7 @@ async function deduct(cat) {
                 body: JSON.stringify({ cat, amt, rem })
             });
             status.innerText = '✅ 已存至雲端';
-            setTimeout(() => status.style.display = 'none', 2000);
+            setTimeout(() => { status.style.display = 'none'; }, 2000);
         } catch (e) {
             status.innerText = '❌ 上傳失敗 (已存於本地)';
         }
@@ -157,14 +155,9 @@ async function deduct(cat) {
     }
 }
 
-// 先畫出本地數，再試同步
 render(); 
 syncFromCloud();
-
 </script>
+
 </body>
 </html>
-
-
-
-
