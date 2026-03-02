@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>庚金女 3月財富管理 V4</title>
+    <style>
+        :root { --primary: #3498db; --danger: #e74c3c; --dark: #2c3e50; --gray: #95a5a6; }
+        body { font-family: sans-serif; background: #f0f2f5; padding: 15px; margin: 0; padding-bottom: 50px; }
+        .header { background: var(--dark); color: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; text-align: center; }
+        .grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
+        .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .card h3 { margin: 0; font-size: 18px; color: var(--dark); }
+        .balance { font-size: 22px; font-weight: bold; color: #27ae60; }
+        
+        .input-row { display: flex; gap: 8px; margin-bottom: 8px; }
+        .input-row input[type="number"] { flex: 0.4; }
+        .input-row input[type="text"] { flex: 0.6; }
+        input { padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; outline: none; }
+        input:focus { border-color: var(--primary); }
+        .btn-add { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; font-size: 16px; margin-bottom: 10px; }
+        
+        /* 紀錄樣式 */
+        .item-history { background: #fdfdfd; border-top: 1px solid #eee; margin-top: 5px; padding-top: 8px; }
+        .history-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dashed #eee; font-size: 13px; color: #555; }
+        .history-row:last-child { border-bottom: none; }
+        .history-info { display: flex; flex-direction: column; flex: 1; }
+        .history-remark { color: #333; font-weight: 500; }
+        .history-time { color: #aaa; font-size: 11px; }
+        .history-price { color: var(--danger); font-weight: bold; margin: 0 10px; }
+        .btn-del { color: #ccc; border: none; background: none; font-size: 18px; cursor: pointer; padding: 0 5px; }
+        .btn-del:hover { color: var(--danger); }
+
+        .reset-btn { background: var(--gray); margin-top: 30px; width: 100%; padding: 15px; border: none; border-radius: 10px; color: white; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2 style="margin:0">3月預算儀表板</h2>
+    <p id="total-left" style="font-size:15px; margin-top:5px; opacity:0.9">計算中...</p>
+</div>
+
+<div class="grid" id="budget-container"></div>
+
+<button class="reset-btn" onclick="resetAll()">新月份重置 (Reset All)</button>
+
+<script>
+const initialBudgets = {
+    "午餐": 2640, "晚餐": 3120, "零用": 6690, "交通": 4100,
+    "固定支出": 14400, "電話分期": 450, "水電煤": 1500,
+    "保險": 3400, "旅遊": 4000, "買樓儲蓄": 12000
+};
+
+let currentBudgets = JSON.parse(localStorage.getItem('v4_Budgets')) || {...initialBudgets};
+let historyData = JSON.parse(localStorage.getItem('v4_History')) || {};
+
+function render() {
+    const container = document.getElementById('budget-container');
+    container.innerHTML = '';
+    let total = 0;
+    
+    for (let item in currentBudgets) {
+        total += currentBudgets[item];
+        const itemHistory = historyData[item] || [];
+        
+        const div = document.createElement('div');
+        div.className = 'card';
+        
+        let historyHTML = itemHistory.length > 0 ? 
+            `<div class="item-history">` + 
+            itemHistory.slice().reverse().map((log, index) => `
+                <div class="history-row">
+                    <div class="history-info">
+                        <span class="history-remark">${log.remark || '無備註'}</span>
+                        <span class="history-time">${log.time}</span>
+                    </div>
+                    <span class="history-price">-$${log.amount.toLocaleString()}</span>
+                    <button class="btn-del" onclick="deleteItem('${item}', ${itemHistory.length - 1 - index})">×</button>
+                </div>
+            `).join('') + `</div>` : '';
+
+        div.innerHTML = `
+            <div class="card-top">
+                <h3>${item}</h3>
+                <div class="balance">$${currentBudgets[item].toLocaleString()}</div>
+            </div>
+            <div class="input-row">
+                <input type="number" id="amt-${item}" placeholder="$ 金額" inputmode="decimal">
+                <input type="text" id="rem-${item}" placeholder="備註 (如: 譚仔)">
+            </div>
+            <button class="btn-add" onclick="deduct('${item}')">確認扣數</button>
+            ${historyHTML}
+        `;
+        container.appendChild(div);
+    }
+    
+    document.getElementById('total-left').innerText = `剩餘總額: $${total.toLocaleString()}`;
+    
+    localStorage.setItem('v4_Budgets', JSON.stringify(currentBudgets));
+    localStorage.setItem('v4_History', JSON.stringify(historyData));
+}
+
+function deduct(category) {
+    const amtInput = document.getElementById(`amt-${category}`);
+    const remInput = document.getElementById(`rem-${category}`);
+    const amount = parseFloat(amtInput.value);
+    const remark = remInput.value.trim();
+    
+    if (!isNaN(amount) && amount > 0) {
+        currentBudgets[category] -= amount;
+        
+        const now = new Date();
+        const timeStr = `${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}`;
+        
+        if (!historyData[category]) historyData[category] = [];
+        historyData[category].push({ amount, remark, time: timeStr });
+        
+        amtInput.value = '';
+        remInput.value = '';
+        render();
+    }
+}
+
+function deleteItem(category, index) {
+    const deletedAmt = historyData[category][index].amount;
+    currentBudgets[category] += deletedAmt; // 退錢
+    historyData[category].splice(index, 1); // 刪紀錄
+    render();
+}
+
+function resetAll() {
+    if (confirm('⚠️ 警告：這將清除所有數據並恢復初始預算！確定嗎？')) {
+        currentBudgets = {...initialBudgets};
+        historyData = {};
+        render();
+    }
+}
+
+render();
+</script>
+
+</body>
+</html>
