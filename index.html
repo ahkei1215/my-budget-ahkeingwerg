@@ -3,33 +3,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3月同步版 V6</title>
+    <title>3月財富管理 V7</title>
     <style>
         :root { --primary: #3498db; --danger: #e74c3c; --dark: #2c3e50; }
-        body { font-family: sans-serif; background: #f0f2f5; padding: 15px; margin: 0; padding-bottom: 80px; }
+        body { font-family: sans-serif; background: #f0f2f5; padding: 10px; margin: 0; padding-bottom: 60px; }
         .header { background: var(--dark); color: white; padding: 15px; border-radius: 12px; margin-bottom: 10px; text-align: center; }
         .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
-        .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .card { background: white; padding: 12px; border-radius: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         .balance { font-size: 20px; font-weight: bold; color: #27ae60; }
-        .input-row { display: flex; gap: 8px; margin-bottom: 8px; }
-        input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; width: 40%; }
-        button { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; width: 100%; font-weight: bold; cursor: pointer; }
-        #sync-status { display: none; text-align: center; color: #f39c12; margin-bottom: 10px; font-weight: bold; font-size: 14px; background: #fff; padding: 8px; border-radius: 8px; border: 1px solid #f39c12; }
-        .history { margin-top: 10px; font-size: 12px; border-top: 1px solid #eee; padding-top: 5px; }
-        /* 撤銷按鈕樣式 */
-        .undo-btn { background: #95a5a6; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; }
+        .input-row { display: flex; gap: 5px; margin-bottom: 8px; }
+        input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        button.main-btn { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 8px; width: 100%; font-weight: bold; cursor: pointer; }
+        
+        /* 歷史紀錄區域優化 */
+        .history-box { 
+            margin-top: 10px; 
+            background: #fafafa; 
+            border-radius: 8px; 
+            padding: 5px; 
+            max-height: 120px; 
+            overflow-y: auto; 
+            border: 1px solid #eee;
+        }
+        .history-row { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            padding: 6px 4px; 
+            border-bottom: 1px solid #eee; 
+            font-size: 12px; 
+        }
+        .history-row:last-child { border-bottom: none; }
+        .history-info { color: #555; flex: 1; }
+        .history-amt { color: var(--danger); font-weight: bold; margin: 0 8px; }
+        .del-x { color: #ccc; cursor: pointer; font-weight: bold; font-size: 14px; padding: 0 5px; }
+        
+        #sync-status { display: none; text-align: center; color: #f39c12; margin-bottom: 10px; font-size: 13px; }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h2 style="margin:0">3月預算</h2>
-    <p id="total-left" style="font-size:14px; margin-top:5px; opacity:0.9">載入中...</p>
+    <h2 style="margin:0">3月預算 </h2>
+    <p id="total-left" style="font-size:14px; margin-top:5px; opacity:0.9">同步中...</p>
 </div>
 
-<div id="sync-status">☁️ 準備連線...</div>
-
+<div id="sync-status">☁️ 雲端同步中...</div>
 <div class="grid" id="budget-container"></div>
 
 <script>
@@ -41,37 +61,38 @@ const initialBudgets = {
     "保險": 3400, "旅遊": 4000, "買樓儲蓄": 12000
 };
 
-let currentBudgets = JSON.parse(localStorage.getItem('march_Budgets')) || {...initialBudgets};
-let historyData = JSON.parse(localStorage.getItem('march_History')) || {};
+let currentBudgets = {...initialBudgets};
+let historyData = {};
 
 async function syncFromCloud() {
     const status = document.getElementById('sync-status');
     status.style.display = 'block';
-    status.innerText = '☁️ 正在連線雲端數據...';
     try {
         const response = await fetch(API_URL);
         const rows = await response.json(); 
         let newBudgets = {...initialBudgets};
         let newHistory = {};
+        
+        // 讀取所有 Sheet 紀錄
         for (let i = 1; i < rows.length; i++) {
             if(!rows[i][1]) continue; 
-            let dateObj = new Date(rows[i][0]);
-            let time = (dateObj.getMonth()+1) + '/' + dateObj.getDate() + ' ' + dateObj.getHours() + ':' + dateObj.getMinutes().toString().padStart(2, '0');
-            let cat = rows[i][1];
-            let amt = parseFloat(rows[i][2]);
-            let rem = rows[i][3] || "無備註";
+            let d = new Date(rows[i][0]);
+            let time = (d.getMonth()+1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + d.getMinutes().toString().padStart(2, '0');
+            let cat = rows[i][1], amt = parseFloat(rows[i][2]), rem = rows[i][3] || "";
+            
             if (newBudgets[cat] !== undefined) {
                 newBudgets[cat] -= amt;
                 if (!newHistory[cat]) newHistory[cat] = [];
-                newHistory[cat].push({ amt, rem, time });
+                // 儲存時帶埋 Row Index，方便刪除
+                newHistory[cat].push({ amt, rem, time, row: i + 1 });
             }
         }
         currentBudgets = newBudgets;
         historyData = newHistory;
-        status.innerText = '✅ 雲端同步成功';
-        setTimeout(() => { status.style.display = 'none'; }, 2000);
+        status.innerText = '✅ 同步成功';
+        setTimeout(() => status.style.display = 'none', 1500);
     } catch (e) {
-        status.innerText = '⚠️ 連線失敗，正使用本地紀錄';
+        status.innerText = '⚠️ 同步失敗 (Offline Mode)';
     }
     render();
 }
@@ -80,71 +101,63 @@ function render() {
     const container = document.getElementById('budget-container');
     container.innerHTML = '';
     let total = 0;
+    
     for (let item in currentBudgets) {
         total += currentBudgets[item];
         const logs = historyData[item] || [];
+        
+        // 生成多行紀錄 HTML (最近 5 條)
+        let logList = logs.slice(-5).reverse().map(l => `
+            <div class="history-row">
+                <div class="history-info"><b>${l.rem}</b> <span style="font-size:10px;color:#999">${l.time}</span></div>
+                <div class="history-amt">-$${l.amt}</div>
+                <div class="del-x" onclick="deleteRecord('${l.row}', '${item}')">×</div>
+            </div>
+        `).join('');
+
         const div = document.createElement('div');
         div.className = 'card';
-        let histHTML = logs.slice(-1).map(l => 
-            `<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#888;margin-top:4px;">
-                <span>${l.time} ${l.rem} (-$${l.amt})</span>
-                <button class="undo-btn" onclick="undoLast('${item}')">撤銷</button>
-            </div>`).join('');
-        
         div.innerHTML = `
             <div class="card-top"><h3>${item}</h3><div class="balance">$${currentBudgets[item].toLocaleString()}</div></div>
             <div class="input-row">
-                <input type="number" id="amt-${item}" placeholder="金額" inputmode="decimal">
+                <input type="number" id="amt-${item}" placeholder="$" inputmode="decimal">
                 <input type="text" id="rem-${item}" placeholder="備註">
             </div>
-            <button onclick="deduct('${item}')">確認扣數</button>
-            <div class="history">${histHTML || '<span style="color:#ccc">暫無紀錄</span>'}</div>
+            <button class="main-btn" onclick="deduct('${item}')">確認扣數</button>
+            <div class="history-box">${logList || '<span style="color:#ccc;font-size:12px;padding:5px">暫無紀錄</span>'}</div>
         `;
         container.appendChild(div);
     }
     document.getElementById('total-left').innerText = `剩餘總額: $${total.toLocaleString()}`;
-    localStorage.setItem('march_Budgets', JSON.stringify(currentBudgets));
-    localStorage.setItem('march_History', JSON.stringify(historyData));
 }
 
 async function deduct(cat) {
-    const amtInput = document.getElementById(`amt-${cat}`);
-    const remInput = document.getElementById(`rem-${cat}`);
-    const amt = parseFloat(amtInput.value);
-    const rem = remInput.value || "無備註";
-    if (!isNaN(amt) && amt > 0) {
-        const status = document.getElementById('sync-status');
-        status.style.display = 'block';
-        status.innerText = '📤 正在上傳...';
-        currentBudgets[cat] -= amt;
-        render();
-        try {
-            await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ cat, amt, rem, action: 'add' }) });
-            status.innerText = '✅ 已存至雲端';
-            setTimeout(() => { status.style.display = 'none'; }, 1500);
-            syncFromCloud(); // 重新攞數確保同步
-        } catch (e) { status.innerText = '❌ 上傳失敗'; }
-        amtInput.value = ''; remInput.value = '';
-    }
-}
+    const amt = parseFloat(document.getElementById(`amt-${cat}`).value);
+    const rem = document.getElementById(`rem-${cat}`).value || "無備註";
+    if (isNaN(amt) || amt <= 0) return;
 
-// 🚀 新增撤銷功能：呢個功能會直接叫 Google Sheet 剷最後一行
-async function undoLast(cat) {
-    if(!confirm('確定要撤銷「' + cat + '」嘅最後一筆入數嗎？')) return;
-    const status = document.getElementById('sync-status');
-    status.style.display = 'block';
-    status.innerText = '🗑️ 正在撤銷雲端紀錄...';
+    document.getElementById('sync-status').style.display = 'block';
+    document.getElementById('sync-status').innerText = '📤 上傳中...';
+    
     try {
-        await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete_last', cat: cat }) });
-        status.innerText = '✅ 已撤銷，正在重新計算...';
-        setTimeout(syncFromCloud, 1000);
-    } catch (e) { status.innerText = '❌ 撤銷失敗'; }
+        await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'add', cat, amt, rem }) });
+        document.getElementById(`amt-${cat}`).value = '';
+        document.getElementById(`rem-${cat}`).value = '';
+        syncFromCloud(); // 重新整理數據
+    } catch (e) { alert('上傳失敗'); }
 }
 
-render(); 
+async function deleteRecord(row, cat) {
+    if(!confirm('確定刪除呢條紀錄？')) return;
+    document.getElementById('sync-status').style.display = 'block';
+    document.getElementById('sync-status').innerText = '🗑️ 正在刪除...';
+    try {
+        await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete_row', row: row }) });
+        syncFromCloud();
+    } catch (e) { alert('刪除失敗'); }
+}
+
 syncFromCloud();
 </script>
 </body>
 </html>
-
-
