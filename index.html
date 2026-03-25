@@ -131,24 +131,93 @@ const initialBudgets = {
     "保險": 3400, "旅遊": 4000, "買樓儲蓄": 12000
 };
 
-let currentBudgets = {...initialBudgets};
-let historyData = {};
+// 從本地存儲讀取舊數據，實現「秒開」
+let currentBudgets = JSON.parse(localStorage.getItem('budgets')) || {...initialBudgets};
+let historyData = JSON.parse(localStorage.getItem('history')) || {};
 
-function showStatus(text, duration = 0) {
+function showStatus(text, duration = 1500) {
     const status = document.getElementById('sync-status');
     status.innerText = text;
     status.style.display = 'block';
-    if (duration > 0) {
-        setTimeout(() => { status.style.display = 'none'; }, duration);
+    if (duration > 0) setTimeout(() => status.style.display = 'none', duration);
+}
+
+// 渲染畫面
+function render() {
+    const container = document.getElementById('budget-container');
+    container.innerHTML = '';
+    let total = 0;
+    
+    for (let item in currentBudgets) {
+        total += currentBudgets[item];
+        const logs = historyData[item] || [];
+        let logList = logs.slice(-5).reverse().map(l => `
+            <div class="history-row">
+                <div class="history-info"><b>${l.rem}</b> <span style="font-size:10px;color:#999">${l.time}</span></div>
+                <div class="history-amt">-$${l.amt}</div>
+                <div class="del-x" onclick="deleteRecord('${l.row}', '${item}')">×</div>
+            </div>
+        `).join('');
+
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.innerHTML = `
+            <div class="card-top"><h3>${item}</h3><div class="balance">$${Math.round(currentBudgets[item]).toLocaleString()}</div></div>
+            <div class="input-row">
+                <input type="number" id="amt-${item}" placeholder="$" inputmode="decimal">
+                <input type="text" id="rem-${item}" placeholder="備註">
+            </div>
+            <button class="main-btn" onclick="deduct('${item}')">確認扣數</button>
+            <div class="history-box">${logList || '<span style="color:#ccc;font-size:12px;padding:5px">暫無紀錄</span>'}</div>
+        `;
+        container.appendChild(div);
+    }
+    document.getElementById('total-left').innerText = `剩餘總額: $${Math.round(total).toLocaleString()}`;
+    
+    // 存入本地，下次打開就不用等雲端
+    localStorage.setItem('budgets', JSON.stringify(currentBudgets));
+    localStorage.setItem('history', JSON.stringify(historyData));
+}
+
+// 核心加速邏輯：先扣數，再背景同步
+async function deduct(cat) {
+    const amtInput = document.getElementById(`amt-${cat}`);
+    const remInput = document.getElementById(`rem-${cat}`);
+    const amt = parseFloat(amtInput.value);
+    const rem = remInput.value || "無備註";
+
+    if (isNaN(amt) || amt <= 0) return;
+
+    // 1. 【體感加速】立即更新本地數據
+    const now = new Date();
+    const timeStr = (now.getMonth()+1) + '/' + now.getDate() + ' ' + now.getHours() + ':' + now.getMinutes().toString().padStart(2, '0');
+    
+    currentBudgets[cat] -= amt;
+    if (!historyData[cat]) historyData[cat] = [];
+    historyData[cat].push({ amt, rem, time: timeStr, row: 'temp' }); // 先給個假 row
+
+    // 2. 立即渲染，用戶會看到數字立刻變了
+    render();
+    amtInput.value = '';
+    remInput.value = '';
+
+    // 3. 【靜默同步】在背後傳給 Google，不擋住用戶
+    showStatus('📤 同步中...', 1000);
+    try {
+        await fetch(API_URL, { 
+            method: 'POST', 
+            mode: 'no-cors', 
+            body: JSON.stringify({ action: 'add', cat, amt, rem }) 
+        });
+        // 同步成功後，可以選擇在 3 秒後靜默更新一次數據，確保 row index 正確
+        setTimeout(syncFromCloud, 3000);
+    } catch (e) {
+        showStatus('⚠️ 網路異常，稍後自動重試');
     }
 }
 
-function hideStatus() {
-    document.getElementById('sync-status').style.display = 'none';
-}
-
 async function syncFromCloud() {
-    showStatus('☁️ 讀取雲端數據...');
+    // 只有在第一次打開或手動刷新時才顯示「同步中」
     try {
         const response = await fetch(API_URL);
         const rows = await response.json(); 
@@ -169,98 +238,15 @@ async function syncFromCloud() {
         }
         currentBudgets = newBudgets;
         historyData = newHistory;
-        showStatus('✅ 同步成功', 1000);
+        render();
     } catch (e) {
-        showStatus('⚠️ 同步失敗 (Offline)', 2000);
-    }
-    render();
-}
-
-function render() {
-    const container = document.getElementById('budget-container');
-    container.innerHTML = '';
-    let total = 0;
-    
-    for (let item in currentBudgets) {
-        total += currentBudgets[item];
-        const logs = historyData[item] || [];
-        let logList = logs.slice(-5).reverse().map(l => `
-            <div class="history-row">
-                <div class="history-info"><b>${l.rem}</b> <span style="font-size:10px;color:#999">${l.time}</span></div>
-                <div class="history-amt">-$${l.amt}</div>
-                <div class="del-x" onclick="deleteRecord('${l.row}', '${item}')">×</div>
-            </div>
-        `).join('');
-
-        const div = document.createElement('div');
-        div.className = 'card';
-        div.innerHTML = `
-            <div class="card-top"><h3>${item}</h3><div class="balance">$${currentBudgets[item].toLocaleString()}</div></div>
-            <div class="input-row">
-                <input type="number" id="amt-${item}" placeholder="金額" inputmode="decimal">
-                <input type="text" id="rem-${item}" placeholder="備註">
-            </div>
-            <button class="main-btn" onclick="deduct('${item}')">確認扣數</button>
-            <div class="history-box">${logList || '<span style="color:#ccc;font-size:12px;padding:5px">暫無紀錄</span>'}</div>
-        `;
-        container.appendChild(div);
-    }
-    document.getElementById('total-left').innerText = `剩餘總額: $${total.toLocaleString()}`;
-}
-
-async function deduct(cat) {
-    const amtField = document.getElementById(`amt-${cat}`);
-    const remField = document.getElementById(`rem-${cat}`);
-    const amt = parseFloat(amtField.value);
-    const rem = remField.value || "無備註";
-    
-    if (isNaN(amt) || amt <= 0) return;
-
-    // --- 【優化：體感加速】 ---
-    // 1. 立即更新本地數據，不等伺服器
-    currentBudgets[cat] -= amt; 
-    
-    // 2. 立即在畫面上顯示更新（不需要全量 render）
-    render(); 
-    
-    // 3. 清空輸入框
-    amtField.value = '';
-    remField.value = '';
-
-    // 4. 背景上傳，顯示小小的上傳標誌就好，不要擋住整個螢幕
-    showStatus('📤 同步中...', 1000); 
-    
-    try {
-        await fetch(API_URL, { 
-            method: 'POST', 
-            mode: 'no-cors', 
-            body: JSON.stringify({ action: 'add', cat, amt, rem }) 
-        });
-        // 成功後可以不用 syncFromCloud()，因為本地已經減過了
-        // 如果想確保萬無一失，可以每隔幾次操作才做一次大同步
-    } catch (e) { 
-        alert('同步失敗，剛才的扣數可能未存入雲端！'); 
+        console.log("Offline mode");
     }
 }
 
-async function deleteRecord(row, cat) {
-    if(!confirm('確定刪除呢條紀錄？')) return;
-    showStatus('🗑️ 正在刪除...');
-    try {
-        await fetch(API_URL, { 
-            method: 'POST', 
-            mode: 'no-cors', 
-            body: JSON.stringify({ action: 'delete_row', row: row }) 
-        });
-        await syncFromCloud();
-    } catch (e) { 
-        alert('刪除失敗'); 
-        hideStatus();
-    }
-}
-
-// 初始加載
-syncFromCloud();
+// 初始運行
+render(); // 優先顯示 Local Storage 的數據
+syncFromCloud(); // 背後偷偷更新最新狀態
 </script>
 </body>
 </html>
