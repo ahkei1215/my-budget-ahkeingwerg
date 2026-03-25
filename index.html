@@ -216,7 +216,19 @@ async function deduct(cat) {
     
     if (isNaN(amt) || amt <= 0) return;
 
-    showStatus('📤 正在上傳紀錄...');
+    // --- 【優化：體感加速】 ---
+    // 1. 立即更新本地數據，不等伺服器
+    currentBudgets[cat] -= amt; 
+    
+    // 2. 立即在畫面上顯示更新（不需要全量 render）
+    render(); 
+    
+    // 3. 清空輸入框
+    amtField.value = '';
+    remField.value = '';
+
+    // 4. 背景上傳，顯示小小的上傳標誌就好，不要擋住整個螢幕
+    showStatus('📤 同步中...', 1000); 
     
     try {
         await fetch(API_URL, { 
@@ -224,13 +236,10 @@ async function deduct(cat) {
             mode: 'no-cors', 
             body: JSON.stringify({ action: 'add', cat, amt, rem }) 
         });
-        amtField.value = '';
-        remField.value = '';
-        // 為了讓用戶感覺更快，先手動同步一次或直接重新抓取
-        await syncFromCloud(); 
+        // 成功後可以不用 syncFromCloud()，因為本地已經減過了
+        // 如果想確保萬無一失，可以每隔幾次操作才做一次大同步
     } catch (e) { 
-        alert('上傳失敗，請檢查網路'); 
-        hideStatus();
+        alert('同步失敗，剛才的扣數可能未存入雲端！'); 
     }
 }
 
