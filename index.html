@@ -2,27 +2,81 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>3月財富管理 V7</title>
     <style>
-        :root { --primary: #3498db; --danger: #e74c3c; --dark: #2c3e50; }
-        body { font-family: sans-serif; background: #f0f2f5; padding: 10px; margin: 0; padding-bottom: 60px; }
-        .header { background: var(--dark); color: white; padding: 15px; border-radius: 12px; margin-bottom: 10px; text-align: center; }
-        .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
-        .card { background: white; padding: 12px; border-radius: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-        .balance { font-size: 20px; font-weight: bold; color: #27ae60; }
-        .input-row { display: flex; gap: 5px; margin-bottom: 8px; }
-        input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
-        button.main-btn { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 8px; width: 100%; font-weight: bold; cursor: pointer; }
+        :root { --primary: #3498db; --danger: #e74c3c; --dark: #2c3e50; --success: #27ae60; }
         
-        /* 歷史紀錄區域優化 */
-        .history-box { 
-            margin-top: 10px; 
-            background: #fafafa; 
+        /* 確保寬度 100% 並優化移動端體驗 */
+        * { box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background: #f0f2f5; 
+            padding: 10px; 
+            margin: 0; 
+            width: 100%;
+            overflow-x: hidden;
+        }
+
+        .header { 
+            background: var(--dark); 
+            color: white; 
+            padding: 20px 15px; 
+            border-radius: 12px; 
+            margin-bottom: 12px; 
+            text-align: center; 
+            width: 100%;
+        }
+
+        .grid { 
+            display: grid; 
+            grid-template-columns: 1fr; /* 移動端預設一欄，寬度會自動 100% */
+            gap: 12px; 
+            width: 100%;
+        }
+
+        .card { 
+            background: white; 
+            padding: 15px; 
+            border-radius: 12px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
+            width: 100%;
+        }
+
+        .card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .balance { font-size: 22px; font-weight: bold; color: var(--success); }
+        
+        .input-row { display: flex; gap: 8px; margin-bottom: 10px; }
+        input { 
+            flex: 1; 
+            padding: 10px; 
+            border: 1px solid #ddd; 
             border-radius: 8px; 
-            padding: 5px; 
-            max-height: 120px; 
+            font-size: 16px; /* 防止 iOS 輸入時自動放大 */
+            width: 100%;
+        }
+
+        button.main-btn { 
+            background: var(--primary); 
+            color: white; 
+            border: none; 
+            padding: 12px; 
+            border-radius: 8px; 
+            width: 100%; 
+            font-weight: bold; 
+            cursor: pointer; 
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        button.main-btn:active { background: #2980b9; }
+
+        /* 歷史紀錄區域 */
+        .history-box { 
+            margin-top: 12px; 
+            background: #f9f9f9; 
+            border-radius: 8px; 
+            padding: 8px; 
+            max-height: 150px; 
             overflow-y: auto; 
             border: 1px solid #eee;
         }
@@ -30,29 +84,45 @@
             display: flex; 
             justify-content: space-between; 
             align-items: center; 
-            padding: 6px 4px; 
+            padding: 8px 4px; 
             border-bottom: 1px solid #eee; 
-            font-size: 12px; 
+            font-size: 13px; 
         }
         .history-row:last-child { border-bottom: none; }
-        .history-info { color: #555; flex: 1; }
-        .history-amt { color: var(--danger); font-weight: bold; margin: 0 8px; }
-        .del-x { color: #ccc; cursor: pointer; font-weight: bold; font-size: 14px; padding: 0 5px; }
-        
-        #sync-status { display: none; text-align: center; color: #f39c12; margin-bottom: 10px; font-size: 13px; }
+        .history-amt { color: var(--danger); font-weight: bold; margin: 0 10px; }
+        .del-x { color: #ccc; cursor: pointer; font-weight: bold; font-size: 18px; padding: 0 8px; }
+
+        /* 修改後的「同步中」彈窗 */
+        #sync-status { 
+            display: none; 
+            position: fixed; 
+            top: 50%; 
+            left: 50%; 
+            transform: translate(-50%, -50%); 
+            background: rgba(0, 0, 0, 0.8); 
+            color: white; 
+            padding: 20px 40px; 
+            border-radius: 50px; 
+            z-index: 9999; 
+            font-size: 16px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h2 style="margin:0">3月預算 </h2>
-    <p id="total-left" style="font-size:14px; margin-top:5px; opacity:0.9">同步中...</p>
+    <h2 style="margin:0">3月預算</h2>
+    <div id="total-left" style="font-size:16px; margin-top:8px; font-weight:bold; color: #ecf0f1;">計算中...</div>
 </div>
 
 <div id="sync-status">☁️ 雲端同步中...</div>
+
 <div class="grid" id="budget-container"></div>
 
 <script>
+// 請確保 API_URL 正確
 const API_URL = 'https://script.google.com/macros/s/AKfycbxauaxw2Q8k-0E77ZXj2fzGlDdJPJNsXBionq2G71yyEW_3SspWYs7TVhzC89riQhps/exec'; 
 
 const initialBudgets = {
@@ -64,16 +134,27 @@ const initialBudgets = {
 let currentBudgets = {...initialBudgets};
 let historyData = {};
 
-async function syncFromCloud() {
+function showStatus(text, duration = 0) {
     const status = document.getElementById('sync-status');
+    status.innerText = text;
     status.style.display = 'block';
+    if (duration > 0) {
+        setTimeout(() => { status.style.display = 'none'; }, duration);
+    }
+}
+
+function hideStatus() {
+    document.getElementById('sync-status').style.display = 'none';
+}
+
+async function syncFromCloud() {
+    showStatus('☁️ 讀取雲端數據...');
     try {
         const response = await fetch(API_URL);
         const rows = await response.json(); 
         let newBudgets = {...initialBudgets};
         let newHistory = {};
         
-        // 讀取所有 Sheet 紀錄
         for (let i = 1; i < rows.length; i++) {
             if(!rows[i][1]) continue; 
             let d = new Date(rows[i][0]);
@@ -83,16 +164,14 @@ async function syncFromCloud() {
             if (newBudgets[cat] !== undefined) {
                 newBudgets[cat] -= amt;
                 if (!newHistory[cat]) newHistory[cat] = [];
-                // 儲存時帶埋 Row Index，方便刪除
                 newHistory[cat].push({ amt, rem, time, row: i + 1 });
             }
         }
         currentBudgets = newBudgets;
         historyData = newHistory;
-        status.innerText = '✅ 同步成功';
-        setTimeout(() => status.style.display = 'none', 1500);
+        showStatus('✅ 同步成功', 1000);
     } catch (e) {
-        status.innerText = '⚠️ 同步失敗 (Offline Mode)';
+        showStatus('⚠️ 同步失敗 (Offline)', 2000);
     }
     render();
 }
@@ -105,8 +184,6 @@ function render() {
     for (let item in currentBudgets) {
         total += currentBudgets[item];
         const logs = historyData[item] || [];
-        
-        // 生成多行紀錄 HTML (最近 5 條)
         let logList = logs.slice(-5).reverse().map(l => `
             <div class="history-row">
                 <div class="history-info"><b>${l.rem}</b> <span style="font-size:10px;color:#999">${l.time}</span></div>
@@ -120,7 +197,7 @@ function render() {
         div.innerHTML = `
             <div class="card-top"><h3>${item}</h3><div class="balance">$${currentBudgets[item].toLocaleString()}</div></div>
             <div class="input-row">
-                <input type="number" id="amt-${item}" placeholder="$" inputmode="decimal">
+                <input type="number" id="amt-${item}" placeholder="金額" inputmode="decimal">
                 <input type="text" id="rem-${item}" placeholder="備註">
             </div>
             <button class="main-btn" onclick="deduct('${item}')">確認扣數</button>
@@ -132,31 +209,48 @@ function render() {
 }
 
 async function deduct(cat) {
-    const amt = parseFloat(document.getElementById(`amt-${cat}`).value);
-    const rem = document.getElementById(`rem-${cat}`).value || "無備註";
+    const amtField = document.getElementById(`amt-${cat}`);
+    const remField = document.getElementById(`rem-${cat}`);
+    const amt = parseFloat(amtField.value);
+    const rem = remField.value || "無備註";
+    
     if (isNaN(amt) || amt <= 0) return;
 
-    document.getElementById('sync-status').style.display = 'block';
-    document.getElementById('sync-status').innerText = '📤 上傳中...';
+    showStatus('📤 正在上傳紀錄...');
     
     try {
-        await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'add', cat, amt, rem }) });
-        document.getElementById(`amt-${cat}`).value = '';
-        document.getElementById(`rem-${cat}`).value = '';
-        syncFromCloud(); // 重新整理數據
-    } catch (e) { alert('上傳失敗'); }
+        await fetch(API_URL, { 
+            method: 'POST', 
+            mode: 'no-cors', 
+            body: JSON.stringify({ action: 'add', cat, amt, rem }) 
+        });
+        amtField.value = '';
+        remField.value = '';
+        // 為了讓用戶感覺更快，先手動同步一次或直接重新抓取
+        await syncFromCloud(); 
+    } catch (e) { 
+        alert('上傳失敗，請檢查網路'); 
+        hideStatus();
+    }
 }
 
 async function deleteRecord(row, cat) {
     if(!confirm('確定刪除呢條紀錄？')) return;
-    document.getElementById('sync-status').style.display = 'block';
-    document.getElementById('sync-status').innerText = '🗑️ 正在刪除...';
+    showStatus('🗑️ 正在刪除...');
     try {
-        await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete_row', row: row }) });
-        syncFromCloud();
-    } catch (e) { alert('刪除失敗'); }
+        await fetch(API_URL, { 
+            method: 'POST', 
+            mode: 'no-cors', 
+            body: JSON.stringify({ action: 'delete_row', row: row }) 
+        });
+        await syncFromCloud();
+    } catch (e) { 
+        alert('刪除失敗'); 
+        hideStatus();
+    }
 }
 
+// 初始加載
 syncFromCloud();
 </script>
 </body>
