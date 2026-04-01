@@ -150,16 +150,22 @@ function hideStatus() {
 async function syncFromCloud() {
     showStatus('☁️ 讀取雲端數據...');
     try {
-        const response = await fetch(API_URL);
+        // 在網址後加入 ?t=時間戳，防止瀏覽器讀取舊快取
+        const response = await fetch(API_URL + '?t=' + new Date().getTime());
         const rows = await response.json(); 
+        
         let newBudgets = {...initialBudgets};
         let newHistory = {};
         
+        // 從第二行開始讀取 (跳過標題列)
         for (let i = 1; i < rows.length; i++) {
             if(!rows[i][1]) continue; 
+            
             let d = new Date(rows[i][0]);
             let time = (d.getMonth()+1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + d.getMinutes().toString().padStart(2, '0');
-            let cat = rows[i][1], amt = parseFloat(rows[i][2]), rem = rows[i][3] || "";
+            let cat = rows[i][1];
+            let amt = parseFloat(rows[i][2]);
+            let rem = rows[i][3] || "";
             
             if (newBudgets[cat] !== undefined) {
                 newBudgets[cat] -= amt;
@@ -169,11 +175,12 @@ async function syncFromCloud() {
         }
         currentBudgets = newBudgets;
         historyData = newHistory;
+        render(); // 先渲染畫面
         showStatus('✅ 同步成功', 1000);
     } catch (e) {
-        showStatus('⚠️ 同步失敗 (Offline)', 2000);
+        console.error(e);
+        showStatus('⚠️ 讀取失敗: ' + e.message, 3000);
     }
-    render();
 }
 
 function render() {
