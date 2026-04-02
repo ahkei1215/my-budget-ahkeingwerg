@@ -244,8 +244,12 @@ async function deduct(cat) {
         });
         amtField.value = '';
         remField.value = '';
-        // 為了讓用戶感覺更快，先手動同步一次或直接重新抓取
-        await syncFromCloud(); 
+        
+        // 等待 1 秒再讀取，確保 Google Sheet 已經完成寫入
+        setTimeout(async () => {
+            await syncFromCloud(); 
+        }, 1000);
+
     } catch (e) { 
         alert('上傳失敗，請檢查網路'); 
         hideStatus();
