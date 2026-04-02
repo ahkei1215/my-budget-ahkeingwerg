@@ -150,32 +150,38 @@ function hideStatus() {
 async function syncFromCloud() {
     showStatus('☁️ 讀取雲端數據...');
     try {
-        // 在網址後加入 ?t=時間戳，防止瀏覽器讀取舊快取
         const response = await fetch(API_URL + '?t=' + new Date().getTime());
         const rows = await response.json(); 
         
         let newBudgets = {...initialBudgets};
         let newHistory = {};
         
-        // 從第二行開始讀取 (跳過標題列)
-        for (let i = 1; i < rows.length; i++) {
+        // --- 修正重點 1: i 從 0 開始 (因為沒有標題列) ---
+        for (let i = 0; i < rows.length; i++) {
+            // 如果這行沒有類別(B欄)，就跳過
             if(!rows[i][1]) continue; 
             
             let d = new Date(rows[i][0]);
             let time = (d.getMonth()+1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + d.getMinutes().toString().padStart(2, '0');
-            let cat = rows[i][1];
-            let amt = parseFloat(rows[i][2]);
-            let rem = rows[i][3] || "";
             
-            if (newBudgets[cat] !== undefined) {
+            let cat = rows[i][1];      // B欄: 類別
+            
+            // --- 修正重點 2: 根據你的截圖，金額在 D 欄 (索引 3) ---
+            let amt = parseFloat(rows[i][3]); 
+            
+            // --- 修正重點 3: 備註在 E 欄 (索引 4) ---
+            let rem = rows[i][4] || ""; 
+            
+            if (newBudgets[cat] !== undefined && !isNaN(amt)) {
                 newBudgets[cat] -= amt;
                 if (!newHistory[cat]) newHistory[cat] = [];
+                // row: i + 1 是為了刪除功能能對準行數
                 newHistory[cat].push({ amt, rem, time, row: i + 1 });
             }
         }
         currentBudgets = newBudgets;
         historyData = newHistory;
-        render(); // 先渲染畫面
+        render(); 
         showStatus('✅ 同步成功', 1000);
     } catch (e) {
         console.error(e);
