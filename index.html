@@ -234,24 +234,44 @@ async function deduct(cat) {
     
     if (isNaN(amt) || amt <= 0) return;
 
-    showStatus('📤 正在上傳紀錄...');
+    // --- 🏃 極速優化：先在網頁畫面上「假裝」扣左數先 ---
+    const originalBudget = currentBudgets[cat];
+    const originalHistory = historyData[cat] || [];
+    
+    currentBudgets[cat] -= amt;
+    if (!historyData[cat]) historyData[cat] = [];
+    historyData[cat].push({ 
+        amt, 
+        rem, 
+        time: "同步中...", 
+        row: "pending" 
+    });
+    
+    render(); // 立即更新介面，用戶會覺得「秒入」
+    amtField.value = '';
+    remField.value = '';
+
+    showStatus('📤 雲端同步中...');
     
     try {
+        // 背景慢慢傳資料去 Google
         await fetch(API_URL, { 
             method: 'POST', 
             mode: 'no-cors', 
             body: JSON.stringify({ action: 'add', cat, amt, rem }) 
         });
-        amtField.value = '';
-        remField.value = '';
-        
-        // 等待 1 秒再讀取，確保 Google Sheet 已經完成寫入
+
+        // 成功後，1.5 秒後靜悄悄重新同步最準確的雲端數據
         setTimeout(async () => {
             await syncFromCloud(); 
-        }, 1000);
+        }, 1500);
 
     } catch (e) { 
-        alert('上傳失敗，請檢查網路'); 
+        // 如果真係傳輸失敗，先還原數據並報警
+        currentBudgets[cat] = originalBudget;
+        historyData[cat] = originalHistory;
+        render();
+        alert('同步失敗，請檢查網路！資料已還原'); 
         hideStatus();
     }
 }
