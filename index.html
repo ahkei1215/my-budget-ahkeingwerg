@@ -150,32 +150,37 @@ function hideStatus() {
 async function syncFromCloud() {
     showStatus('☁️ 讀取雲端數據...');
     try {
+        // 【修正 1】加入時間戳防止快取，確保讀到最新 Sheet 內容
         const response = await fetch(API_URL + '?t=' + new Date().getTime());
         const rows = await response.json(); 
         
+        console.log("從雲端讀取到的原始資料：", rows); // 可以在瀏覽器 F12 看到資料
+
         let newBudgets = {...initialBudgets};
         let newHistory = {};
         
-        // --- 修正重點 1: i 從 0 開始 (因為沒有標題列) ---
+        // 【修正 2】i 從 0 開始讀取 (因為你沒有標題列)
         for (let i = 0; i < rows.length; i++) {
-            // 如果這行沒有類別(B欄)，就跳過
-            if(!rows[i][1]) continue; 
+            if(!rows[i] || rows[i].length < 2) continue; 
             
-            let d = new Date(rows[i][0]);
+            let rowDate = rows[i][0];
+            let cat = rows[i][1];      // B 欄：類別 (例如 "午餐")
+            let amt = parseFloat(rows[i][2]); // C 欄：金額 (如果你的金額在 C 欄)
+            let rem = rows[i][3] || "";      // D 欄：備註
+
+            // 如果發現金額讀不到，試試改成 rows[i][3] (如果是 D 欄)
+            if (isNaN(amt) && rows[i][3]) {
+                amt = parseFloat(rows[i][3]);
+                rem = rows[i][4] || "";
+            }
+
+            let d = new Date(rowDate);
             let time = (d.getMonth()+1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + d.getMinutes().toString().padStart(2, '0');
             
-            let cat = rows[i][1];      // B欄: 類別
-            
-            // --- 修正重點 2: 根據你的截圖，金額在 D 欄 (索引 3) ---
-            let amt = parseFloat(rows[i][3]); 
-            
-            // --- 修正重點 3: 備註在 E 欄 (索引 4) ---
-            let rem = rows[i][4] || ""; 
-            
+            // 檢查類別名稱是否與 initialBudgets 100% 吻合 (包括空格)
             if (newBudgets[cat] !== undefined && !isNaN(amt)) {
                 newBudgets[cat] -= amt;
                 if (!newHistory[cat]) newHistory[cat] = [];
-                // row: i + 1 是為了刪除功能能對準行數
                 newHistory[cat].push({ amt, rem, time, row: i + 1 });
             }
         }
@@ -184,8 +189,8 @@ async function syncFromCloud() {
         render(); 
         showStatus('✅ 同步成功', 1000);
     } catch (e) {
-        console.error(e);
-        showStatus('⚠️ 讀取失敗: ' + e.message, 3000);
+        console.error("讀取失敗原因：", e);
+        showStatus('⚠️ 讀取失敗', 3000);
     }
 }
 
