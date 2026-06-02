@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>6月財富管理</title>
     <style>
-        :root { --primary: #3498db; --danger: #e74c3c; --dark: #2c3e50; --success: #27ae60; }
+        :root { --primary: #3498db; --danger: #e74c3c; --dark: #2c3e50; --success: #27ae60; --muted: #7f8c8d; }
         
         /* 確保寬度 100% 並優化移動端體驗 */
         * { box-sizing: border-box; }
@@ -43,8 +43,13 @@
             width: 100%;
         }
 
-        .card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+        .card-title { margin: 0; font-size: 18px; }
+        .card-right { text-align: right; }
         .balance { font-size: 22px; font-weight: bold; color: var(--success); }
+        /* 當超支變負數時的樣式 */
+        .balance.negative { color: var(--danger); }
+        .total-spent { font-size: 12px; color: var(--muted); margin-top: 2px; }
         
         .input-row { display: flex; gap: 8px; margin-bottom: 10px; }
         input { 
@@ -150,25 +155,22 @@ function hideStatus() {
 async function syncFromCloud() {
     showStatus('☁️ 讀取雲端數據...');
     try {
-        // 【修正 1】加入時間戳防止快取，確保讀到最新 Sheet 內容
         const response = await fetch(API_URL + '?t=' + new Date().getTime());
         const rows = await response.json(); 
         
-        console.log("從雲端讀取到的原始資料：", rows); // 可以在瀏覽器 F12 看到資料
+        console.log("從雲端讀取到的原始資料：", rows);
 
         let newBudgets = {...initialBudgets};
         let newHistory = {};
         
-        // 【修正 2】i 從 0 開始讀取 (因為你沒有標題列)
         for (let i = 0; i < rows.length; i++) {
             if(!rows[i] || rows[i].length < 2) continue; 
             
             let rowDate = rows[i][0];
-            let cat = rows[i][1];      // B 欄：類別 (例如 "午餐")
-            let amt = parseFloat(rows[i][2]); // C 欄：金額 (如果你的金額在 C 欄)
-            let rem = rows[i][3] || "";      // D 欄：備註
+            let cat = rows[i][1];      
+            let amt = parseFloat(rows[i][2]); 
+            let rem = rows[i][3] || "";      
 
-            // 如果發現金額讀不到，試試改成 rows[i][3] (如果是 D 欄)
             if (isNaN(amt) && rows[i][3]) {
                 amt = parseFloat(rows[i][3]);
                 rem = rows[i][4] || "";
@@ -177,7 +179,6 @@ async function syncFromCloud() {
             let d = new Date(rowDate);
             let time = (d.getMonth()+1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + d.getMinutes().toString().padStart(2, '0');
             
-            // 檢查類別名稱是否與 initialBudgets 100% 吻合 (包括空格)
             if (newBudgets[cat] !== undefined && !isNaN(amt)) {
                 newBudgets[cat] -= amt;
                 if (!newHistory[cat]) newHistory[cat] = [];
@@ -197,11 +198,15 @@ async function syncFromCloud() {
 function render() {
     const container = document.getElementById('budget-container');
     container.innerHTML = '';
-    let total = 0;
+    let totalLeft = 0;
     
     for (let item in currentBudgets) {
-        total += currentBudgets[item];
+        totalLeft += currentBudgets[item];
         const logs = historyData[item] || [];
+        
+        // --- 核心修改：計算該項目總共用咗幾多錢 ---
+        let totalSpent = logs.reduce((sum, log) => sum + log.amt, 0);
+
         let logList = logs.slice(-5).reverse().map(l => `
             <div class="history-row">
                 <div class="history-info"><b>${l.rem}</b> <span style="font-size:10px;color:#999">${l.time}</span></div>
@@ -210,10 +215,20 @@ function render() {
             </div>
         `).join('');
 
+        // 判斷係咪用爆咗（超支變負數）
+        const isNegative = currentBudgets[item] < 0;
+        const balanceClass = isNegative ? 'balance negative' : 'balance';
+
         const div = document.createElement('div');
         div.className = 'card';
         div.innerHTML = `
-            <div class="card-top"><h3>${item}</h3><div class="balance">$${currentBudgets[item].toLocaleString()}</div></div>
+            <div class="card-top">
+                <h3 class="card-title">${item}</h3>
+                <div class="card-right">
+                    <div class="${balanceClass}">$${currentBudgets[item].toLocaleString()}</div>
+                    <div class="total-spent">本月已用: $${totalSpent.toLocaleString()}</div>
+                </div>
+            </div>
             <div class="input-row">
                 <input type="number" id="amt-${item}" placeholder="金額" inputmode="decimal">
                 <input type="text" id="rem-${item}" placeholder="備註">
@@ -223,7 +238,9 @@ function render() {
         `;
         container.appendChild(div);
     }
-    document.getElementById('total-left').innerText = `剩餘總額: $${total.toLocaleString()}`;
+    
+    // 頂部總額顯示優化（如果總預算都超支，文字都可以變色提示，呢度維持原本格式）
+    document.getElementById('total-left').innerText = `剩餘總額: $${totalLeft.toLocaleString()}`;
 }
 
 async function deduct(cat) {
@@ -234,7 +251,6 @@ async function deduct(cat) {
     
     if (isNaN(amt) || amt <= 0) return;
 
-    // --- 🏃 極速優化：先在網頁畫面上「假裝」扣左數先 ---
     const originalBudget = currentBudgets[cat];
     const originalHistory = historyData[cat] || [];
     
@@ -247,27 +263,24 @@ async function deduct(cat) {
         row: "pending" 
     });
     
-    render(); // 立即更新介面，用戶會覺得「秒入」
+    render(); // 立即樂觀更新介面
     amtField.value = '';
     remField.value = '';
 
     showStatus('📤 雲端同步中...');
     
     try {
-        // 背景慢慢傳資料去 Google
         await fetch(API_URL, { 
             method: 'POST', 
             mode: 'no-cors', 
             body: JSON.stringify({ action: 'add', cat, amt, rem }) 
         });
 
-        // 成功後，1.5 秒後靜悄悄重新同步最準確的雲端數據
         setTimeout(async () => {
             await syncFromCloud(); 
         }, 1500);
 
     } catch (e) { 
-        // 如果真係傳輸失敗，先還原數據並報警
         currentBudgets[cat] = originalBudget;
         historyData[cat] = originalHistory;
         render();
