@@ -198,24 +198,25 @@ async function syncFromCloud() {
 function render() {
     const container = document.getElementById('budget-container');
     container.innerHTML = '';
-    let totalLeft = 0;
     
+    let totalLeft = 0;
+    let unclassifiedSpent = 0; // 用嚟計算打錯字、認唔到類別嘅總支出
+    let unclassifiedLogs = []; // 儲存認唔到類別嘅紀錄
+
+    // 1. 先計算所有預算內項目
     for (let item in currentBudgets) {
         totalLeft += currentBudgets[item];
         const logs = historyData[item] || [];
-        
-        // --- 核心修改：計算該項目總共用咗幾多錢 ---
         let totalSpent = logs.reduce((sum, log) => sum + log.amt, 0);
 
         let logList = logs.slice(-5).reverse().map(l => `
             <div class="history-row">
                 <div class="history-info"><b>${l.rem}</b> <span style="font-size:10px;color:#999">${l.time}</span></div>
-                <div class="history-amt">-$${l.amt}</div>
+                <div class="history-amt">-$${l.amt.toFixed(2)}</div>
                 <div class="del-x" onclick="deleteRecord('${l.row}', '${item}')">×</div>
             </div>
         `).join('');
 
-        // 判斷係咪用爆咗（超支變負數）
         const isNegative = currentBudgets[item] < 0;
         const balanceClass = isNegative ? 'balance negative' : 'balance';
 
@@ -225,8 +226,8 @@ function render() {
             <div class="card-top">
                 <h3 class="card-title">${item}</h3>
                 <div class="card-right">
-                    <div class="${balanceClass}">$${currentBudgets[item].toLocaleString()}</div>
-                    <div class="total-spent">本月已用: $${totalSpent.toLocaleString()}</div>
+                    <div class="${balanceClass}">$${currentBudgets[item].toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                    <div class="total-spent">本月已用: $${totalSpent.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
                 </div>
             </div>
             <div class="input-row">
@@ -238,9 +239,43 @@ function render() {
         `;
         container.appendChild(div);
     }
+
+    // 2. 檢查是否有「打錯字/未分類」嘅隱形支出（去 historyData 搵返 initialBudgets 冇嘅 key）
+    for (let cat in historyData) {
+        if (initialBudgets[cat] === undefined) {
+            const errorLogs = historyData[cat] || [];
+            errorLogs.forEach(l => {
+                unclassifiedSpent += l.amt;
+                unclassifiedLogs.push(`【${cat}】-${l.amt.toFixed(2)} (${l.rem})`);
+            });
+        }
+    }
+
+    // 真正的淨剩餘：要再減埋呢啲冇被歸類卡片扣減嘅隱形支出
+    totalLeft -= unclassifiedSpent;
+
+    // 3. 如果真係有未分類開支，喺最頂部生一個紅色警告卡片提示你
+    if (unclassifiedLogs.length > 0) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'card';
+        errorDiv.style.border = '2px solid var(--danger)';
+        errorDiv.style.background = '#fdf2f2';
+        errorDiv.innerHTML = `
+            <div class="card-top" style="margin-bottom: 5px;">
+                <h3 class="card-title" style="color: var(--danger)">⚠️ 發現未分類/打錯字支出</h3>
+                <div class="balance negative">-$${unclassifiedSpent.toFixed(2)}</div>
+            </div>
+            <p style="font-size: 12px; color: #666; margin: 0 0 8px 0;">以下項目喺網頁冇對應卡片（請去 Google Sheet 修改類別名稱，確保冇多填空格）：</p>
+            <div style="font-size: 13px; color: var(--dark); background: #fff; padding: 8px; border-radius: 6px; border: 1px solid #f5c6cb;">
+                ${unclassifiedLogs.join('<br>')}
+            </div>
+        `;
+        // 將警告卡片塞到最前面
+        container.insertBefore(errorDiv, container.firstChild);
+    }
     
-    // 頂部總額顯示優化（如果總預算都超支，文字都可以變色提示，呢度維持原本格式）
-    document.getElementById('total-left').innerText = `剩餘總額: $${totalLeft.toLocaleString()}`;
+    // 更新頂部「真正的淨剩餘」總額（強制顯示兩位小數）
+    document.getElementById('total-left').innerText = `真正的淨剩餘: $${totalLeft.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
 }
 
 async function deduct(cat) {
